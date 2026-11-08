@@ -1,21 +1,24 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState, useEffect, FormEvent } from "react";
+import Image from "next/image";
 import { getWeatherByCity, getWeatherByCoords } from "@/lib/weather";
 import InstallPrompt from "./component/InstallPromt";
 
 export default function Home() {
-  const [city, setCity] = useState("");
-  const [weather, setWeather] = useState(null);
-  const [error, setError] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [city, setCity] = useState<string>("");
+  const [weather, setWeather] = useState<any>(null);
+  const [error, setError] = useState<string>("");
+  const [loading, setLoading] = useState<boolean>(false);
 
   // Recuperar el último clima guardado
   useEffect(() => {
     try {
       const cachedWeather = localStorage.getItem("last_weather");
-
       if (cachedWeather) {
-        setWeather(JSON.parse(cachedWeather));
+        const parsed = JSON.parse(cachedWeather);
+        if (parsed && parsed.main) {
+          setWeather(parsed);
+        }
       }
     } catch (err) {
       console.error("Error al recuperar el clima:", err);
@@ -23,10 +26,31 @@ export default function Home() {
     }
   }, []);
 
-  // Buscar clima por ciudad
-  const handleSearch = async (e) => {
-    e.preventDefault();
+  // Ejecutar petición a la API
+  const executeFetch = async (apiCall: () => Promise<any>) => {
+    setLoading(true);
+    setError("");
 
+    try {
+      const data = await apiCall();
+
+      if (data && data.cod && Number(data.cod) !== 200) {
+        throw new Error(data.message || "No se pudo obtener el clima.");
+      }
+
+      setWeather(data);
+      localStorage.setItem("last_weather", JSON.stringify(data));
+    } catch (err: any) {
+      setError(err?.message || "Error al obtener datos del clima.");
+      setWeather(null);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Buscar clima por ciudad
+  const handleSearch = (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault();
     if (!city.trim()) return;
 
     executeFetch(() => getWeatherByCity(city.trim()));
@@ -43,53 +67,27 @@ export default function Home() {
     setError("");
 
     navigator.geolocation.getCurrentPosition(
-      (position) => {
+      async (position) => {
         const { latitude, longitude } = position.coords;
-
-        executeFetch(() =>
-          getWeatherByCoords(latitude, longitude)
-        );
+        await executeFetch(() => getWeatherByCoords(latitude, longitude));
       },
-      (err) => {
+      () => {
         setLoading(false);
         setError("No se pudo obtener tu ubicación. Verifica los permisos.");
       }
     );
   };
 
-  // Ejecutar petición a la API
-  const executeFetch = async (apiCall) => {
-    setLoading(true);
-    setError("");
-
-    try {
-      const data = await apiCall();
-
-      setWeather(data);
-
-      localStorage.setItem("last_weather", JSON.stringify(data));
-    } catch (err) {
-      setError(err.message || "Error al obtener datos del clima.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
   return (
     <main className="min-h-screen bg-slate-900 text-white p-6 flex flex-col items-center">
-
       {/* Encabezado */}
       <header className="w-full max-w-md flex justify-between items-center mb-8">
-        <h1 className="text-2xl font-bold text-sky-400">
-          WeatherPWA
-        </h1>
-
+        <h1 className="text-2xl font-bold text-sky-400">WeatherPWA</h1>
         <InstallPrompt />
       </header>
 
       {/* Controles de búsqueda y ubicación */}
       <section className="w-full max-w-md space-y-4 mb-6">
-
         <form onSubmit={handleSearch} className="flex gap-2">
           <input
             type="text"
@@ -115,7 +113,6 @@ export default function Home() {
         >
           📍 Usar mi ubicación actual
         </button>
-
       </section>
 
       {/* Indicadores de estado */}
@@ -132,48 +129,53 @@ export default function Home() {
       )}
 
       {/* Tarjeta con los datos del clima */}
-      {weather && !loading && (
+      {weather && weather.main && !loading && (
         <article className="w-full max-w-md bg-slate-800 border border-slate-700 p-6 rounded-2xl shadow-xl text-center space-y-4">
-
           <h2 className="text-3xl font-bold">
-            {weather.name}, {weather.sys.country}
+            {weather.name}{weather.sys?.country ? `, ${weather.sys.country}` : ""}
           </h2>
 
-          <div className="flex justify-center items-center">
-            <img
-              src={`https://openweathermap.org/img/wn/${weather.weather[0].icon}@2x.png`}
-              alt={weather.weather[0].description}
-            />
+          <div className="flex justify-center items-center gap-2">
+            {weather.weather?.[0]?.icon && (
+              <Image
+                src={`https://openweathermap.org/img/wn/${weather.weather[0].icon}@2x.png`}
+                alt={weather.weather[0]?.description || "Clima"}
+                width={80}
+                height={80}
+                priority
+              />
+            )}
 
-            <span className="text-5xl font-extrabold">
-              {Math.round(weather.main.temp)}°C
-            </span>
+            {typeof weather.main?.temp === "number" && (
+              <span className="text-5xl font-extrabold">
+                {Math.round(weather.main.temp)}°C
+              </span>
+            )}
           </div>
 
-          <p className="capitalize text-slate-300">
-            {weather.weather[0].description}
-          </p>
+          {weather.weather?.[0]?.description && (
+            <p className="capitalize text-slate-300">
+              {weather.weather[0].description}
+            </p>
+          )}
 
           <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-700 text-sm">
-
             <div>
               Humedad:{" "}
               <strong className="text-white">
-                {weather.main.humidity}%
+                {weather.main?.humidity ?? 0}%
               </strong>
             </div>
 
             <div>
               Viento:{" "}
               <strong className="text-white">
-                {weather.wind.speed} m/s
+                {weather.wind?.speed ?? 0} m/s
               </strong>
             </div>
-
           </div>
         </article>
       )}
-
     </main>
   );
 }
