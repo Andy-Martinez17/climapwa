@@ -1,17 +1,23 @@
-import type { NextConfig } from "next";
+const withPWAInit = require("@ducanh2912/next-pwa").default || require("@ducanh2912/next-pwa");
 
-const nextConfig: NextConfig = {
-  /* config options here */
-  cacheComponents: true,
-  partialPrefetching: true,
-  turbopack: {
-    rules: {
-      "*.css": {
-        loaders: ["@tailwindcss/turbopack"],
-        as: "*.css",
+const withPWA = withPWAInit({
+  dest: "public",
+  disable: process.env.NODE_ENV === "development",
+  register: true,
+  skipWaiting: true,
+});
+
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  turbopack: {},
+  images: {
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "openweathermap.org",
       },
-    },
+    ],
   },
 };
 
-export default nextConfig;
+module.exports = withPWA(nextConfig);
